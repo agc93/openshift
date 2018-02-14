@@ -1,0 +1,100 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: vsts-agent-openshift
+  annotations:
+    description: "A simple OpenShift template for running a VSTS Build Agent"
+    template.openshift.io/long-description: >-
+      This template can be used to quickly deploy an instance of the Visual Studio Team Services (VSTS)
+      agent that runs tasks as part of a build or release. By default, this template is based on the 
+      official `microsoft/vsts-agent` image using Ubuntu 16.04. Template created by Alistair Chapman.
+    template.openshift.io/provider-display-name: "Alistair Chapman"
+    openshift.io/display-name: "VSTS Agent"
+    iconClass: "icon-beaker"
+    tags: "ci-cd,vsts"
+labels:
+  template: "vsts-agent-openshift"
+objects:
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: vsts-agent
+  spec:
+    replicas: 1
+    selector:
+      component: vsts-agent
+    template:
+      metadata:
+        labels:
+          component: vsts-agent
+      spec:
+        containers:
+        - image: vsts-agent:latest
+          name: vsts-agent
+          # volumeMounts:
+          # - mountPath: /juice-shop/data/juiceshop.sqlite
+          #   name: juice-shop-db
+          #   subPath: juiceshop.sqlite
+          # - mountPath: /.npm
+          #   name: npm-pkg
+          envFrom:
+          - configMapRef:
+              name: agent-config
+          resources:
+            requests:
+              memory: 512Mi
+            limits:
+              memory: 4Gi
+        restartPolicy: Always
+        volumes:
+        - name: vsts-agent-work
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - vsts-agent
+        from:
+          kind: ImageStreamTag
+          name: vsts-agent:latest
+      type: ImageChange
+- kind: ImageStream
+  apiVersion: v1
+  metadata:
+    name: vsts-agent
+  spec:
+    tags:
+    - from:
+        kind: DockerImage
+        name: ${UPSTREAM_IMAGE}
+      name: latest
+- kind: ConfigMap
+  apiVersion: v1
+  metadata:
+    name: agent-config
+  data:
+    VSTS_ACCOUNT: ${VSTS_ACCOUNT}
+    VSTS_TOKEN: ${VSTS_TOKEN}
+- kind: "PersistentVolumeClaim"
+  apiVersion: "v1"
+  metadata:
+    name: "vsts-agent-pvc"
+  spec:
+    accessModes:
+      - "ReadWriteMany"
+    resources:
+      requests:
+        storage: "512Mi"
+parameters:
+  - name: UPSTREAM_IMAGE
+    displayName: Agent Image
+    description: The Docker image to use for the agent (in case you wish to use a custom one)
+    value: 'microsoft/vsts-agent-docker'
+  - name: VSTS_ACCOUNT
+    displayName: VSTS Account Name
+    description: The name of the Visual Studio Account
+    value: ''
+  - name: VSTS_TOKEN
+    displayName: VSTS Access Token
+    description: 'A personal access token (PAT) for the Visual Studio account that has been given at least the "Agent Pools (read, manage)" scope.'
+    value: ''

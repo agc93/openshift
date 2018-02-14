@@ -1,0 +1,125 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: registry
+  annotations:
+    description: "A simple OpenShift template for running a standalone Docker registry"
+    openshift.io/long-description: >-
+      This template can be used to quickly a deploy a simple standalone Docker Registry. 
+      Note that this template will not change or replace the registry built in to OpenShift itself,
+      and is simply a template for using the official Docker Registry image
+    openshift.io/provider-display-name: "Alistair Chapman"
+    openshift.io/display-name: "Docker Registry"
+    iconClass: "icon-mysql-database"
+    tags: "datastore"
+labels:
+  template: "registry-openshift"
+objects:
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: registry
+    labels:
+      component: registry
+  spec:
+    replicas: 1
+    selector:
+      component: registry
+    template:
+      metadata:
+        labels:
+          component: registry
+      spec:
+        containers:
+        - image: registry:latest
+          name: registry
+          volumeMounts:
+          - mountPath: /var/lib/registry/
+            name: registry-data
+          ports:
+          - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+        restartPolicy: Always
+        volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: "registry-storage"
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - registry
+        from:
+          kind: ImageStreamTag
+          name: registry:latest
+      type: ImageChange
+- kind: ImageStream
+  apiVersion: v1
+  metadata:
+    labels:
+      component: registry
+    name: registry
+  spec:
+    tags:
+    - annotations: null
+      from:
+        kind: DockerImage
+        name: ${REGISTRY_IMAGE}
+      name: latest
+- kind: Service
+  apiVersion: v1
+  metadata:
+    labels:
+      component: registry
+    name: registry-svc
+  spec:
+    ports:
+    - name: "http-api"
+      port: 5000
+      targetPort: 5000
+    selector:
+      component: registry
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: registry-api
+  spec:
+    host: ${HOST}
+    port:
+      targetPort: http-api
+    to:
+      kind: Service
+      name: registry-svc
+      weight: 100
+    tls:
+      insecureEdgeTerminationPolicy: Redirect
+      termination: edge
+- kind: "PersistentVolumeClaim"
+  apiVersion: "v1"
+  metadata:
+    name: "registry-storage"
+  spec:
+    accessModes:
+      - "ReadWriteMany"
+    resources:
+      requests:
+        storage: ${STORAGE_SIZE}
+parameters:
+  - name: REGISTRY_IMAGE
+    displayName: "Registry image spec"
+    description: "The Docker image name (including tag) to use for the Registry (defaults to official library image)"
+    value: 'library/registry:2'
+  - name: HOST
+    displayName: Route hostname
+    description: The host name for the service route to listen on
+    value: ''
+  - name: STORAGE_SIZE
+    displayName: Storage Volume Capacity
+    description: The capacity of the registry's storage volume
+    value: '10Gi'
